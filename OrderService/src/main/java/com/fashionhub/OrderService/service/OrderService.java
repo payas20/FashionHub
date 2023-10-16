@@ -1,23 +1,31 @@
 package com.fashionhub.OrderService.service;
 
+import com.fashionhub.OrderService.dto.InventoryResponse;
 import com.fashionhub.OrderService.dto.OrderLineItemDto;
 import com.fashionhub.OrderService.dto.OrderRequest;
 import com.fashionhub.OrderService.model.Order;
 import com.fashionhub.OrderService.model.OrderLineItem;
 import com.fashionhub.OrderService.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.util.UriBuilder;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 @Transactional
+@Slf4j
 public class OrderService {
 
     private final OrderRepository orderRepository;
+
+    private final WebClient.Builder webClientBuilder;
 
     public void placeOrder(OrderRequest orderRequest){
         Order order = new Order();
@@ -28,7 +36,25 @@ public class OrderService {
 
         order.setOrderLineItems(orderLineItems);
 
-        orderRepository.save(order);
+        List<String> skuCodes = orderLineItems.stream()
+                .map(OrderLineItem::getSkuCode).toList();
+
+        // To Check products available in stock or not
+        InventoryResponse[] inventoryResponses = webClientBuilder.build().get()
+                .uri("http://inventory-service/api/inventory", uriBuilder -> uriBuilder.queryParam("skuCodes", skuCodes).build())
+                .retrieve()
+                .bodyToMono(InventoryResponse[].class)
+                .block();
+
+        log.info("Inventory Responses " + inventoryResponses.length);
+        boolean allProductsAvailable = Arrays.stream(inventoryResponses).allMatch(InventoryResponse::isInStock);
+
+       if(inventoryResponses.length!=0 && allProductsAvailable) {
+           orderRepository.save(order);
+       }
+       else{
+           throw new RuntimeException("Product not available in stock");
+       }
     }
 
     private OrderLineItem mapToOrderLineItem(OrderLineItemDto orderLineItemDto){
