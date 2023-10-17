@@ -6,6 +6,8 @@ import com.fashionhub.OrderService.dto.OrderRequest;
 import com.fashionhub.OrderService.model.Order;
 import com.fashionhub.OrderService.model.OrderLineItem;
 import com.fashionhub.OrderService.repository.OrderRepository;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -16,6 +18,7 @@ import org.springframework.web.util.UriBuilder;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 @RequiredArgsConstructor
@@ -27,7 +30,8 @@ public class OrderService {
 
     private final WebClient.Builder webClientBuilder;
 
-    public void placeOrder(OrderRequest orderRequest){
+
+    public String placeOrder(OrderRequest orderRequest){
         Order order = new Order();
         order.setOrderNumber(UUID.randomUUID().toString());
         List<OrderLineItem> orderLineItems = orderRequest.getOrderLineItems()
@@ -51,6 +55,7 @@ public class OrderService {
 
        if(inventoryResponses.length!=0 && allProductsAvailable) {
            orderRepository.save(order);
+           return  "Order Placed Succesfully";
        }
        else{
            throw new RuntimeException("Product not available in stock");
